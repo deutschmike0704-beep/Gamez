@@ -1,0 +1,10 @@
+{
+  "name": "gamez",
+  "version": "0.1.0",
+  "description": "Eine Sammlung von Minigames als statische Website",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "dev": "python3 -m http.server 8080"
+  }
+}
