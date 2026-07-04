@@ -1,4 +1,4 @@
-import { createCanvas } from '../core/game-engine.js';
+import { createCanvas, GameLoop, clamp, bindKeys } from '../core/game-engine.js';
 
 const W = 720;
 const H = 400;
@@ -15,7 +15,7 @@ const STATE = { MENU: 0, FIGHT: 1, KO: 2, WIN: 3 };
 
 let state = STATE.MENU;
 let round = 1;
-let keys = {};
+const keys = {};
 
 const player = {
   x: 180, y: 280, hp: 100, maxHp: 100,
@@ -23,9 +23,13 @@ const player = {
 };
 const cpu = {
   x: 540, y: 280, hp: 100, maxHp: 100,
-  punchTimer: 0, block: false, dodge: 0, color: '#e74c3c',
+  punchTimer: 0, block: false, dodge: 0, dodgeDir: 0, color: '#e74c3c',
   aiTimer: 0, aiAction: 'idle',
 };
+
+function cpuDifficulty() {
+  return 1 + (round - 1) * 0.25;
+}
 
 function drawRing() {
   ctx.fillStyle = '#1a1a2e';
@@ -35,11 +39,6 @@ function drawRing() {
   ctx.strokeStyle = '#6c5ce7';
   ctx.lineWidth = 4;
   ctx.strokeRect(40, 200, W - 80, 180);
-  for (let i = 0; i < 4; i++) {
-    ctx.fillStyle = '#444';
-    ctx.fillRect(40 + i * ((W - 80) / 3) - 4, 180, 8, 30);
-    ctx.fillRect(40 + i * ((W - 80) / 3) - 4, 370, 8, 30);
-  }
 }
 
 function drawFighter(f, facing) {
@@ -53,7 +52,6 @@ function drawFighter(f, facing) {
     ctx.scale(-1, 1);
     ctx.translate(-bx, -by);
   }
-
   ctx.fillStyle = f.color;
   ctx.fillRect(bx - 22, by - 70, 44, 55);
   if (f.block) {
@@ -81,78 +79,87 @@ function drawHealthBar(f, x, y, label) {
   ctx.fillStyle = '#333';
   ctx.fillRect(x, y, w, 14);
   ctx.fillStyle = f.hp > 30 ? '#2ecc71' : '#e74c3c';
-  ctx.fillRect(x, y, w * (f.hp / f.maxHp), 14);
+  ctx.fillRect(x, y, w * clamp(f.hp / f.maxHp, 0, 1), 14);
   ctx.fillStyle = '#fff';
   ctx.font = '12px system-ui';
   ctx.textAlign = 'left';
   ctx.fillText(`${label} ${Math.ceil(f.hp)}`, x, y - 4);
 }
 
-function punch(attacker, defender, facing) {
+function tryPunch(attacker, defender) {
   if (attacker.punchTimer > 0 || attacker.block) return;
-  attacker.punchTimer = 12;
-  const reach = 70;
+  attacker.punchTimer = 14;
+  const reach = 75;
   const dist = Math.abs(attacker.x - defender.x);
-  if (dist < reach && !defender.block && defender.dodge === 0) {
-    defender.hp -= defender.block ? 3 : 12;
-    if (defender.hp < 0) defender.hp = 0;
-  } else if (dist < reach && defender.block) {
+  if (dist >= reach) return;
+
+  if (defender.dodge !== 0) return;
+
+  if (defender.block) {
     defender.hp -= 4;
-    attacker.punchTimer = 20;
+    attacker.punchTimer = 22;
+  } else {
+    const dmg = attacker === cpu ? 10 + round * 2 : 12;
+    defender.hp -= dmg;
   }
+  defender.hp = Math.max(0, defender.hp);
 }
 
-function updatePlayer() {
-  player.block = keys['KeyK'];
-  if (keys['KeyA']) player.dodge = -1;
-  else if keys['KeyD']) player.dodge = 1;
-  else player.dodge = 0;
+function updatePlayer(dt) {
+  player.block = !!keys.KeyK;
+  player.dodge = keys.KeyA ? -1 : keys.KeyD ? 1 : 0;
 
-  if (keys['KeyJ'] && player.punchTimer === 0) punch(player, cpu, 1);
+  const moveSpeed = 220 * dt;
+  if (keys.ArrowLeft) player.x -= moveSpeed;
+  if (keys.ArrowRight) player.x += moveSpeed;
+
+  if (keys.KeyJ && player.punchTimer === 0 && !player.block) tryPunch(player, cpu);
 
   if (player.punchTimer > 0) player.punchTimer--;
-  if (player.x < 80) player.x = 80;
-  if (player.x > W / 2 - 40) player.x = W / 2 - 40;
+  player.x = clamp(player.x, 80, W / 2 - 40);
 }
 
-function updateCpu() {
+function updateCpu(dt) {
+  const diff = cpuDifficulty();
   cpu.aiTimer--;
   if (cpu.aiTimer <= 0) {
     const roll = Math.random();
-    if (cpu.hp < 30 && roll < 0.4) cpu.aiAction = 'block';
-    else if (roll < 0.35) cpu.aiAction = 'punch';
-    else if (roll < 0.55) cpu.aiAction = 'dodge';
+    if (cpu.hp < 30 && roll < 0.35) cpu.aiAction = 'block';
+    else if (roll < 0.3 + diff * 0.05) cpu.aiAction = 'punch';
+    else if (roll < 0.5) cpu.aiAction = 'dodge';
     else cpu.aiAction = 'advance';
-    cpu.aiTimer = 30 + Math.random() * 40;
+    cpu.aiTimer = Math.max(15, 40 - diff * 8 + Math.random() * 20);
+    if (cpu.aiAction === 'dodge') cpu.dodgeDir = Math.random() > 0.5 ? 1 : -1;
   }
 
   cpu.block = cpu.aiAction === 'block';
-  cpu.dodge = cpu.aiAction === 'dodge' ? (Math.random() > 0.5 ? 1 : -1) : 0;
+  cpu.dodge = cpu.aiAction === 'dodge' ? cpu.dodgeDir : 0;
 
-  if (cpu.aiAction === 'punch' && cpu.punchTimer === 0) punch(cpu, player, -1);
-  if (cpu.aiAction === 'advance' && cpu.x > player.x + 90) cpu.x -= 1.5;
+  if (cpu.aiAction === 'punch' && cpu.punchTimer === 0) tryPunch(cpu, player);
+  if (cpu.aiAction === 'advance' && cpu.x > player.x + 90) cpu.x -= (1.5 + diff * 0.5) * dt * 60;
 
   if (cpu.punchTimer > 0) cpu.punchTimer--;
+  cpu.x = clamp(cpu.x, W / 2 + 40, W - 80);
 }
 
 function checkEnd() {
   if (player.hp <= 0) {
     state = STATE.KO;
-    hintEl.textContent = 'K.o.! Der CPU hat gewonnen.';
+    hintEl.textContent = 'K.o.! Button für Revanche.';
     return;
   }
   if (cpu.hp <= 0) {
     if (round >= 3) {
       state = STATE.WIN;
-      hintEl.textContent = 'Du bist Champion!';
+      hintEl.textContent = 'Champion! Button für neuen Kampf.';
     } else {
       round++;
       cpu.hp = cpu.maxHp;
       cpu.x = 540;
       player.hp = Math.min(player.maxHp, player.hp + 25);
-      scoreEl.textContent = `Runde ${round} · Gegner besiegt!`;
-      hintEl.textContent = 'Nächste Runde – härterer Gegner!';
-      cpu.aiTimer = 10;
+      scoreEl.textContent = `Runde ${round} · Gegner K.o.!`;
+      hintEl.textContent = 'Nächste Runde – CPU wird stärker!';
+      cpu.aiTimer = 15;
     }
   }
 }
@@ -187,14 +194,11 @@ function render() {
   }
 }
 
-function loop() {
-  if (state === STATE.FIGHT) {
-    updatePlayer();
-    updateCpu();
-    checkEnd();
-  }
-  render();
-  requestAnimationFrame(loop);
+function update(dt) {
+  if (state !== STATE.FIGHT) return;
+  updatePlayer(dt);
+  updateCpu(dt);
+  checkEnd();
 }
 
 function startFight() {
@@ -202,20 +206,36 @@ function startFight() {
   round = 1;
   player.hp = player.maxHp;
   player.x = 180;
+  player.punchTimer = 0;
   cpu.hp = cpu.maxHp;
   cpu.x = 540;
+  cpu.punchTimer = 0;
   cpu.aiTimer = 40;
+  cpu.dodgeDir = 0;
   scoreEl.textContent = 'Runde 1 · Du vs CPU';
   hintEl.textContent = 'J = Schlag · K = Block · A/D = Ausweichen';
 }
 
-document.addEventListener('keydown', (e) => { keys[e.code] = true; });
-document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+const loop = new GameLoop(update, render);
+loop.start();
 
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'ArrowLeft') player.x -= 8;
-  if (e.code === 'ArrowRight') player.x += 8;
+bindKeys({
+  down: {
+    KeyJ: () => { keys.KeyJ = true; },
+    KeyK: () => { keys.KeyK = true; },
+    KeyA: () => { keys.KeyA = true; },
+    KeyD: () => { keys.KeyD = true; },
+    ArrowLeft: () => { keys.ArrowLeft = true; },
+    ArrowRight: () => { keys.ArrowRight = true; },
+  },
+  up: {
+    KeyJ: () => { keys.KeyJ = false; },
+    KeyK: () => { keys.KeyK = false; },
+    KeyA: () => { keys.KeyA = false; },
+    KeyD: () => { keys.KeyD = false; },
+    ArrowLeft: () => { keys.ArrowLeft = false; },
+    ArrowRight: () => { keys.ArrowRight = false; },
+  },
 });
 
 btnStart.addEventListener('click', startFight);
-loop();

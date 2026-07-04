@@ -1,11 +1,14 @@
+import { loadStoredNumber, saveStoredNumber } from '../core/game-engine.js';
+
 const SUITS = ['♠', '♥', '♦', '♣'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const BET = 50;
+const CHIPS_KEY = 'gamez:blackjack:chips';
 
 let deck = [];
 let playerHand = [];
 let dealerHand = [];
-let chips = 500;
+let chips = loadStoredNumber(CHIPS_KEY, 500);
 let phase = 'betting';
 let doubled = false;
 let currentBet = BET;
@@ -56,6 +59,10 @@ function handValue(hand) {
   return total;
 }
 
+function isBlackjack(hand) {
+  return hand.length === 2 && handValue(hand) === 21;
+}
+
 function renderCard(card, hidden = false) {
   const el = document.createElement('div');
   el.className = 'playing-card';
@@ -78,11 +85,11 @@ function renderHands(hideDealer = false) {
     playerCardsEl.appendChild(renderCard(c));
   });
   playerScoreEl.textContent = `(${handValue(playerHand)})`;
-  if (hideDealer) {
-    dealerScoreEl.textContent = `(?)`;
-  } else {
-    dealerScoreEl.textContent = `(${handValue(dealerHand)})`;
-  }
+  dealerScoreEl.textContent = hideDealer ? '(?)' : `(${handValue(dealerHand)})`;
+}
+
+function persistChips() {
+  saveStoredNumber(CHIPS_KEY, chips);
 }
 
 function updateUI() {
@@ -95,42 +102,9 @@ function updateUI() {
   btnDouble.disabled = !playing || playerHand.length !== 2 || chips < BET || doubled;
 }
 
-function deal() {
-  if (chips < BET) {
-    messageEl.textContent = 'Nicht genug Chips!';
-    return;
-  }
-  currentBet = BET;
-  chips -= currentBet;
-  deck = createDeck();
-  playerHand = [deck.pop(), deck.pop()];
-  dealerHand = [deck.pop(), deck.pop()];
-  doubled = false;
-  phase = 'playing';
-  renderHands(true);
-  updateUI();
-
-  if (handValue(playerHand) === 21) {
-    stand();
-    return;
-  }
-  messageEl.textContent = 'Karte ziehen oder halten?';
-}
-
-function hit() {
-  playerHand.push(deck.pop());
-  renderHands(true);
-  if (handValue(playerHand) > 21) {
-    phase = 'done';
-    renderHands(false);
-    messageEl.textContent = 'Bust! Dealer gewinnt.';
-    updateUI();
-  }
-}
-
-function stand() {
+function resolveRound(revealEarly = false) {
   phase = 'done';
-  renderHands(false);
+  renderHands(revealEarly);
   while (handValue(dealerHand) < 17) {
     dealerHand.push(deck.pop());
   }
@@ -140,7 +114,18 @@ function stand() {
   const dVal = handValue(dealerHand);
   let payout = 0;
 
-  if (pVal > 21) {
+  const pBJ = isBlackjack(playerHand);
+  const dBJ = isBlackjack(dealerHand);
+
+  if (pBJ && dBJ) {
+    payout = currentBet;
+    messageEl.textContent = 'Beide Blackjack – Unentschieden.';
+  } else if (pBJ) {
+    payout = Math.floor(currentBet * 2.5);
+    messageEl.textContent = 'Blackjack! 3:2 Auszahlung!';
+  } else if (dBJ) {
+    messageEl.textContent = 'Dealer Blackjack – du verlierst.';
+  } else if (pVal > 21) {
     messageEl.textContent = 'Bust! Du verlierst.';
   } else if (dVal > 21) {
     payout = currentBet * 2;
@@ -155,27 +140,56 @@ function stand() {
     messageEl.textContent = 'Unentschieden – Einsatz zurück.';
   }
 
-  if (pVal === 21 && playerHand.length === 2 && dVal !== 21 && !doubled) {
-    payout = Math.floor(currentBet * 2.5);
-    messageEl.textContent = 'Blackjack! 3:2 Auszahlung!';
-  }
-
   chips += payout;
-  if (chips <= 0) {
+  if (chips < BET) {
     chips = 500;
     messageEl.textContent += ' Neue Chips!';
   }
+  persistChips();
   updateUI();
 }
 
+function deal() {
+  if (phase === 'playing' || chips < BET) return;
+  currentBet = BET;
+  chips -= currentBet;
+  deck = createDeck();
+  playerHand = [deck.pop(), deck.pop()];
+  dealerHand = [deck.pop(), deck.pop()];
+  doubled = false;
+  phase = 'playing';
+  renderHands(true);
+  updateUI();
+  persistChips();
+
+  if (isBlackjack(dealerHand) || isBlackjack(playerHand)) {
+    resolveRound(true);
+    return;
+  }
+  messageEl.textContent = 'Karte ziehen oder halten?';
+}
+
+function hit() {
+  if (phase !== 'playing') return;
+  playerHand.push(deck.pop());
+  renderHands(true);
+  if (handValue(playerHand) > 21) resolveRound(true);
+}
+
+function stand() {
+  if (phase !== 'playing') return;
+  resolveRound(false);
+}
+
 function doubleDown() {
-  if (chips < BET || playerHand.length !== 2) return;
+  if (phase !== 'playing' || chips < BET || playerHand.length !== 2 || doubled) return;
   chips -= BET;
   currentBet += BET;
   doubled = true;
+  persistChips();
   playerHand.push(deck.pop());
   renderHands(true);
-  stand();
+  resolveRound(handValue(playerHand) <= 21);
 }
 
 btnDeal.addEventListener('click', deal);

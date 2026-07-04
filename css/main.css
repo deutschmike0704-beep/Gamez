@@ -150,3 +150,86 @@ body {
   font-size: 1.1rem;
   color: var(--color-text-muted);
 }
+
+.memory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 80px);
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.memory-card {
+  width: 80px;
+  height: 100px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 2rem;
+  cursor: pointer;
+  transition: transform var(--transition), background var(--transition);
+}
+
+.memory-card:hover:not(:disabled) {
+  transform: scale(1.05);
+  background: var(--color-surface-hover);
+}
+
+.memory-card--open {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.memory-card--matched {
+  background: #2ecc71;
+  border-color: #27ae60;
+  opacity: 0.7;
+  cursor: default;
+}
+
+.memory-card:disabled:not(.memory-card--matched) {
+  cursor: default;
+}
+
+.ttt-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 90px);
+  gap: 0.5rem;
+}
+
+.ttt-cell {
+  width: 90px;
+  height: 90px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 2.5rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.ttt-cell:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.ttt-cell--x {
+  color: #3498db;
+}
+
+.ttt-cell--o {
+  color: #e74c3c;
+}
+
+.ttt-cell:disabled {
+  cursor: default;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+  background: var(--color-accent);
+}

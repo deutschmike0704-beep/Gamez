@@ -1,4 +1,4 @@
-import { createCanvas } from '../core/game-engine.js';
+import { createCanvas, GameLoop, clamp } from '../core/game-engine.js';
 
 const W = 600;
 const H = 800;
@@ -14,10 +14,14 @@ const ctx = canvas.getContext('2d');
 const GOAL_SCORE = 7;
 const PADDLE_R = 45;
 const PUCK_R = 18;
+const MARGIN = 20;
+const GOAL_W = 160;
+const MAX_SPEED = 14;
 
 let running = false;
 let playerScore = 0;
 let cpuScore = 0;
+let goalCooldown = 0;
 let mouseX = W / 2;
 let mouseY = H - 120;
 
@@ -29,18 +33,17 @@ function resetPuck(scorer) {
   puck.x = W / 2;
   puck.y = H / 2;
   const dir = scorer === 'player' ? -1 : 1;
-  puck.vx = (Math.random() - 0.5) * 4;
-  puck.vy = dir * 6;
+  puck.vx = (Math.random() - 0.5) * 3;
+  puck.vy = dir * 5;
+  goalCooldown = 60;
 }
 
 function drawTable() {
   ctx.fillStyle = '#0d2137';
   ctx.fillRect(0, 0, W, H);
-
   ctx.fillStyle = '#1565c0';
   ctx.beginPath();
-  const rx = 16;
-  const x = 20, y = 20, rw = W - 40, rh = H - 40;
+  const rx = 16, x = 20, y = 20, rw = W - 40, rh = H - 40;
   ctx.moveTo(x + rx, y);
   ctx.lineTo(x + rw - rx, y);
   ctx.quadraticCurveTo(x + rw, y, x + rw, y + rx);
@@ -61,15 +64,9 @@ function drawTable() {
   ctx.lineTo(W - 20, H / 2);
   ctx.stroke();
   ctx.setLineDash([]);
-
   ctx.beginPath();
   ctx.arc(W / 2, H / 2, 50, 0, Math.PI * 2);
   ctx.stroke();
-
-  const goalW = 160;
-  ctx.fillStyle = '#0d2137';
-  ctx.fillRect(W / 2 - goalW / 2, 10, goalW, 20);
-  ctx.fillRect(W / 2 - goalW / 2, H - 30, goalW, 20);
 }
 
 function drawPaddle(p, color) {
@@ -80,9 +77,6 @@ function drawPaddle(p, color) {
   ctx.beginPath();
   ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
 }
 
 function drawPuck() {
@@ -90,10 +84,15 @@ function drawPuck() {
   ctx.beginPath();
   ctx.arc(puck.x, puck.y, puck.r, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.beginPath();
-  ctx.arc(puck.x - 5, puck.y - 5, 6, 0, Math.PI * 2);
-  ctx.fill();
+}
+
+function capSpeed() {
+  const v = Math.hypot(puck.vx, puck.vy);
+  if (v > MAX_SPEED) {
+    puck.vx *= MAX_SPEED / v;
+    puck.vy *= MAX_SPEED / v;
+  }
+  if (v < 0.3) { puck.vx = 0; puck.vy = 0; }
 }
 
 function collidePaddle(paddle) {
@@ -101,47 +100,47 @@ function collidePaddle(paddle) {
   const dy = puck.y - paddle.y;
   const dist = Math.hypot(dx, dy);
   const minDist = puck.r + paddle.r;
-  if (dist < minDist && dist > 0) {
+  if (dist < minDist && dist > 0.001) {
     const nx = dx / dist;
     const ny = dy / dist;
-    const overlap = minDist - dist;
-    puck.x += nx * overlap;
-    puck.y += ny * overlap;
-    const speed = Math.hypot(puck.vx, puck.vy);
-    const hitPower = 10 + speed * 0.5;
-    puck.vx = nx * hitPower;
-    puck.vy = ny * hitPower;
+    puck.x = paddle.x + nx * minDist;
+    puck.y = paddle.y + ny * minDist;
+    const speed = Math.max(5, Math.hypot(puck.vx, puck.vy));
+    puck.vx = nx * speed;
+    puck.vy = ny * speed;
+    capSpeed();
   }
 }
 
 function wallBounce() {
-  const m = 20 + puck.r;
-  if (puck.x - puck.r < m) { puck.x = m + puck.r; puck.vx *= -1; }
-  if (puck.x + puck.r > W - m) { puck.x = W - m - puck.r; puck.vx *= -1; }
+  const m = MARGIN + puck.r;
+  const inGoalX = puck.x > W / 2 - GOAL_W / 2 && puck.x < W / 2 + GOAL_W / 2;
 
-  const goalW = 160;
-  const inGoalX = puck.x > W / 2 - goalW / 2 && puck.x < W / 2 + goalW / 2;
+  if (puck.x - puck.r < m) { puck.x = m + puck.r; puck.vx = Math.abs(puck.vx); }
+  if (puck.x + puck.r > W - m) { puck.x = W - m - puck.r; puck.vx = -Math.abs(puck.vx); }
+
+  if (goalCooldown > 0) goalCooldown--;
 
   if (puck.y - puck.r < m) {
-    if (inGoalX && running) {
+    if (inGoalX && running && goalCooldown <= 0) {
       playerScore++;
       scoreEl.textContent = `${playerScore} : ${cpuScore}`;
       if (playerScore >= GOAL_SCORE) endGame('Du gewinnst!');
       else resetPuck('player');
-    } else {
+    } else if (!inGoalX) {
       puck.y = m + puck.r;
-      puck.vy *= -1;
+      puck.vy = Math.abs(puck.vy);
     }
   }
   if (puck.y + puck.r > H - m) {
-    if (inGoalX && running) {
+    if (inGoalX && running && goalCooldown <= 0) {
       cpuScore++;
       scoreEl.textContent = `${playerScore} : ${cpuScore}`;
       if (cpuScore >= GOAL_SCORE) endGame('CPU gewinnt!');
       else resetPuck('cpu');
-    } else {
+    } else if (!inGoalX) {
       puck.y = H - m - puck.r;
-      puck.vy *= -1;
+      puck.vy = -Math.abs(puck.vy);
     }
   }
 }
@@ -151,29 +150,30 @@ function update() {
 
   const targetX = puck.x;
   const targetY = Math.min(180, puck.y * 0.35 + 60);
-  cpu.x += (targetX - cpu.x) * 0.06;
+  cpu.x += (targetX - cpu.x) * 0.055;
   cpu.y += (targetY - cpu.y) * 0.04;
-  cpu.x = Math.max(20 + PADDLE_R, Math.min(W - 20 - PADDLE_R, cpu.x));
-  cpu.y = Math.max(20 + PADDLE_R, Math.min(H / 2 - PADDLE_R - 10, cpu.y));
+  cpu.x = clamp(cpu.x, MARGIN + PADDLE_R, W - MARGIN - PADDLE_R);
+  cpu.y = clamp(cpu.y, MARGIN + PADDLE_R, H / 2 - PADDLE_R - 10);
 
-  player.x += (mouseX - player.x) * 0.25;
-  player.y += (mouseY - player.y) * 0.25;
-  player.x = Math.max(20 + PADDLE_R, Math.min(W - 20 - PADDLE_R, player.x));
-  player.y = Math.max(H / 2 + PADDLE_R + 10, Math.min(H - 20 - PADDLE_R, player.y));
+  player.x += (mouseX - player.x) * 0.3;
+  player.y += (mouseY - player.y) * 0.3;
+  player.x = clamp(player.x, MARGIN + PADDLE_R, W - MARGIN - PADDLE_R);
+  player.y = clamp(player.y, H / 2 + PADDLE_R + 10, H - MARGIN - PADDLE_R);
 
-  puck.vx *= 0.998;
-  puck.vy *= 0.998;
   puck.x += puck.vx;
   puck.y += puck.vy;
+  puck.vx *= 0.999;
+  puck.vy *= 0.999;
 
   collidePaddle(player);
   collidePaddle(cpu);
   wallBounce();
+  capSpeed();
 }
 
 function endGame(msg) {
   running = false;
-  hintEl.textContent = msg + ' – Nochmal spielen?';
+  hintEl.textContent = `${msg} – Nochmal spielen?`;
 }
 
 function render() {
@@ -192,35 +192,40 @@ function render() {
   }
 }
 
-function loop() {
-  update();
-  render();
-  requestAnimationFrame(loop);
-}
-
 function startGame() {
   running = true;
   playerScore = 0;
   cpuScore = 0;
+  player.x = W / 2;
+  player.y = H - 100;
+  cpu.x = W / 2;
+  cpu.y = 100;
   scoreEl.textContent = '0 : 0';
-  hintEl.textContent = 'Maus bewegen oder Pfeiltasten';
+  hintEl.textContent = 'Maus, Touch oder Pfeiltasten';
   resetPuck('cpu');
 }
 
-canvas.addEventListener('mousemove', (e) => {
+function pointerPos(e) {
   const rect = canvas.getBoundingClientRect();
-  mouseX = (e.clientX - rect.left) * (W / rect.width);
-  mouseY = (e.clientY - rect.top) * (H / rect.height);
-});
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  mouseX = (clientX - rect.left) * (W / rect.width);
+  mouseY = (clientY - rect.top) * (H / rect.height);
+}
+
+canvas.addEventListener('mousemove', pointerPos);
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); pointerPos(e); }, { passive: false });
 
 document.addEventListener('keydown', (e) => {
   if (!running) return;
-  const step = 20;
+  const step = 25;
   if (e.code === 'ArrowLeft') mouseX -= step;
   if (e.code === 'ArrowRight') mouseX += step;
   if (e.code === 'ArrowUp') mouseY -= step;
   if (e.code === 'ArrowDown') mouseY += step;
+  mouseX = clamp(mouseX, MARGIN + PADDLE_R, W - MARGIN - PADDLE_R);
+  mouseY = clamp(mouseY, H / 2 + PADDLE_R + 10, H - MARGIN - PADDLE_R);
 });
 
 btnStart.addEventListener('click', startGame);
-loop();
+new GameLoop(update, render).start();

@@ -1,4 +1,4 @@
-import { createCanvas, loadHighScore, saveHighScore } from '../core/game-engine.js';
+import { createCanvas, loadHighScore, saveHighScore, GameLoop, clamp } from '../core/game-engine.js';
 
 const W = 720;
 const H = 480;
@@ -22,6 +22,8 @@ let distance = 0;
 let skier = { x: 0, y: 0, z: 0, vy: 0, vz: 0, angle: 0 };
 let meter = 0;
 let meterDir = 1;
+let takeoffTimer = 0;
+let landingLocked = false;
 let bestDist = loadHighScore('ski-jump');
 
 scoreEl.textContent = `Beste Weite: ${bestDist} m`;
@@ -30,25 +32,17 @@ function project(x, y, z) {
   const camY = 120;
   const camZ = -200;
   const scale = 320 / (z - camZ);
-  return {
-    sx: W / 2 + x * scale,
-    sy: H * 0.55 + (y - camY) * scale,
-    scale,
-  };
+  return { sx: W / 2 + x * scale, sy: H * 0.55 + (y - camY) * scale, scale };
 }
 
 function drawHill() {
   const ramp = [
-    project(-280, 80, 400),
-    project(280, 80, 400),
-    project(120, 40, 80),
-    project(-120, 40, 80),
+    project(-280, 80, 400), project(280, 80, 400),
+    project(120, 40, 80), project(-120, 40, 80),
   ];
   const landing = [
-    project(-400, 100, 900),
-    project(400, 100, 900),
-    project(280, 60, 200),
-    project(-280, 60, 200),
+    project(-400, 100, 900), project(400, 100, 900),
+    project(280, 60, 200), project(-280, 60, 200),
   ];
 
   ctx.fillStyle = '#1e3a5f';
@@ -76,23 +70,15 @@ function drawHill() {
   ctx.moveTo(ramp[2].sx, ramp[2].sy);
   ctx.lineTo(ramp[3].sx, ramp[3].sy);
   ctx.stroke();
-
-  for (let i = 0; i < 8; i++) {
-    const p = project(-60 + i * 18, 55, 350 + i * 70);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillRect(p.sx - 20 * p.scale * 0.01, p.sy, 40 * p.scale * 0.01, 3);
-  }
 }
 
 function drawSkier() {
   const p = project(skier.x, skier.y, skier.z);
   const s = Math.max(0.4, p.scale * 0.015);
-
   ctx.save();
   ctx.translate(p.sx, p.sy);
   ctx.scale(s, s);
   ctx.rotate(skier.angle);
-
   ctx.fillStyle = '#e74c3c';
   ctx.fillRect(-8, -30, 16, 22);
   ctx.fillStyle = '#f5d0a0';
@@ -111,33 +97,19 @@ function drawSkier() {
 function drawMeter(label, value, y, perfect = 0.75) {
   const x = W / 2 - 150;
   const w = 300;
+  const zone = 0.12;
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.fillRect(x - 10, y - 30, w + 20, 50);
   ctx.fillStyle = '#333';
   ctx.fillRect(x, y, w, 16);
-  const zone = 0.12;
   ctx.fillStyle = 'rgba(46,204,113,0.4)';
   ctx.fillRect(x + w * (perfect - zone), y, w * zone * 2, 16);
   ctx.fillStyle = '#6c5ce7';
-  ctx.fillRect(x, y, w * value, 16);
+  ctx.fillRect(x, y, w * clamp(value, 0, 1), 16);
   ctx.fillStyle = '#fff';
   ctx.font = '14px system-ui';
   ctx.textAlign = 'center';
   ctx.fillText(label, W / 2, y - 8);
-}
-
-function drawFlightTrail() {
-  if (phase !== PHASE.FLIGHT && phase !== PHASE.LANDING) return;
-  ctx.strokeStyle = 'rgba(108,92,231,0.3)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([4, 6]);
-  ctx.beginPath();
-  const start = project(0, 40, 80);
-  const end = project(skier.x, skier.y, skier.z);
-  ctx.moveTo(start.sx, start.sy);
-  ctx.lineTo(end.sx, end.sy);
-  ctx.stroke();
-  ctx.setLineDash([]);
 }
 
 function drawHUD() {
@@ -145,7 +117,7 @@ function drawHUD() {
     drawMeter('Geschwindigkeit – Leertaste im grünen Bereich!', meter, H - 80, 0.82);
   } else if (phase === PHASE.TAKEOFF) {
     drawMeter('Absprung – Jetzt drücken!', meter, H - 80, 0.5);
-  } else if (phase === PHASE.FLIGHT) {
+  } else if (phase === PHASE.FLIGHT && !landingLocked) {
     drawMeter('Landung – Telemark-Timing!', meter, H - 80, 0.65);
   } else if (phase === PHASE.DONE) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -169,6 +141,8 @@ function resetJump() {
   distance = 0;
   meter = 0;
   meterDir = 1;
+  takeoffTimer = 0;
+  landingLocked = false;
   skier = { x: 0, y: 50, z: 350, vy: 0, vz: 0, angle: 0.3 };
   hintEl.textContent = 'Baue Geschwindigkeit auf – Leertaste im grünen Bereich!';
 }
@@ -176,36 +150,56 @@ function resetJump() {
 function finishJump() {
   phase = PHASE.DONE;
   const base = 60 + speed * 80;
-  distance = base * (0.6 + takeoffQuality * 0.25 + landingQuality * 0.15);
-  if (saveHighScore('ski-jump', Math.round(distance))) {
-    bestDist = Math.round(distance);
+  distance = base * (0.6 + (takeoffQuality / 100) * 0.25 + (landingQuality / 100) * 0.15);
+  const rounded = Math.round(distance);
+  if (saveHighScore('ski-jump', rounded)) {
+    bestDist = rounded;
     scoreEl.textContent = `Beste Weite: ${bestDist} m – Neuer Rekord!`;
   } else {
     scoreEl.textContent = `Beste Weite: ${bestDist} m · Dieser Sprung: ${distance.toFixed(1)} m`;
   }
-  hintEl.textContent = 'Neuer Sprung?';
+  hintEl.textContent = 'Leertaste oder Button für neuen Sprung';
+}
+
+function autoTakeoff() {
+  takeoffQuality = 20;
+  skier.vz = -4;
+  skier.vy = -5;
+  phase = PHASE.FLIGHT;
+  hintEl.textContent = 'Zu spät! Versuche die Landung zu timen.';
 }
 
 function update() {
+  if (phase < PHASE.APPROACH || phase >= PHASE.DONE) return;
+
   frame++;
-  meter += meterDir * 0.018;
-  if (meter >= 1) { meter = 1; meterDir = -1; }
-  if (meter <= 0) { meter = 0; meterDir = 1; }
+  if (phase !== PHASE.LANDING || !landingLocked) {
+    meter += meterDir * 0.018;
+    if (meter >= 1) { meter = 1; meterDir = -1; }
+    if (meter <= 0) { meter = 0; meterDir = 1; }
+  }
 
   if (phase === PHASE.APPROACH) {
     skier.z -= 2.5 + frame * 0.02;
     skier.y = 50 - (350 - skier.z) * 0.08;
     if (skier.z < 90) phase = PHASE.TAKEOFF;
+  } else if (phase === PHASE.TAKEOFF) {
+    skier.z -= 1.2;
+    skier.y = 40 - (90 - skier.z) * 0.15;
+    skier.angle = 0.1;
+    takeoffTimer++;
+    if (takeoffTimer > 90) autoTakeoff();
+    if (skier.z < 75) autoTakeoff();
   } else if (phase === PHASE.FLIGHT) {
     skier.vz += 0.08;
-    skier.vy -= 0.35;
+    skier.vy += 0.35;
     skier.z += skier.vz;
     skier.y += skier.vy;
-    skier.x += Math.sin(frame * 0.05) * 0.3;
     skier.angle = -0.4 + Math.sin(frame * 0.08) * 0.1;
-    if (skier.y > 55) {
+    if (skier.y >= 55) {
       phase = PHASE.LANDING;
       skier.y = 55;
+      if (!landingLocked) landingQuality = 10;
     }
   } else if (phase === PHASE.LANDING) {
     skier.z += 4;
@@ -219,22 +213,22 @@ function render() {
   ctx.fillRect(0, 0, W, H * 0.55);
   ctx.fillStyle = '#4a6741';
   ctx.fillRect(0, H * 0.55, W, H * 0.45);
-
   drawHill();
-  drawFlightTrail();
   drawSkier();
   drawHUD();
-}
 
-function loop() {
-  if (phase >= PHASE.APPROACH && phase < PHASE.DONE) update();
-  render();
-  requestAnimationFrame(loop);
+  if (phase === PHASE.IDLE) {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Leertaste zum Starten', W / 2, H / 2);
+  }
 }
 
 function timingScore(value, perfect = 0.75) {
-  const diff = Math.abs(value - perfect);
-  return Math.max(0, Math.round((1 - diff * 4) * 100));
+  return Math.max(0, Math.round((1 - Math.abs(value - perfect) * 4) * 100));
 }
 
 function onSpace() {
@@ -245,6 +239,7 @@ function onSpace() {
   if (phase === PHASE.APPROACH) {
     speed = timingScore(meter, 0.82) / 100;
     phase = PHASE.TAKEOFF;
+    takeoffTimer = 0;
     hintEl.textContent = 'Absprung! Leertaste am Scheitelpunkt!';
     return;
   }
@@ -256,24 +251,21 @@ function onSpace() {
     hintEl.textContent = 'Flugphase – Telemark-Landung timen!';
     return;
   }
-  if (phase === PHASE.FLIGHT || phase === PHASE.LANDING) {
+  if ((phase === PHASE.FLIGHT || phase === PHASE.LANDING) && !landingLocked) {
     landingQuality = timingScore(meter, 0.65);
+    landingLocked = true;
     phase = PHASE.LANDING;
     hintEl.textContent = 'Landung!';
   }
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    e.preventDefault();
-    onSpace();
-  }
+  if (e.code === 'Space') { e.preventDefault(); onSpace(); }
 });
-
 btnStart.addEventListener('click', () => {
   if (phase === PHASE.IDLE || phase === PHASE.DONE) resetJump();
 });
 
-phase = PHASE.IDLE;
+const loop = new GameLoop(update, render);
+loop.start();
 hintEl.textContent = 'Leertaste oder „Neuer Sprung" zum Starten';
-loop();
