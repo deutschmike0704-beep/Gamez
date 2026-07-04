@@ -15,10 +15,10 @@ Gamez/
 
 ## Spiele
 
-- **Snake** – Klassisches Schlangenspiel
-- **Memory** – Paare finden
-- **Tic-Tac-Toe** – Drei gewinnt
-- **Pong** – Retro-Paddle-Spiel
+- **Snake** – Klassisches Schlangenspiel mit Highscore
+- **Memory** – 16 Karten, Paare finden
+- **Tic-Tac-Toe** – Gegen CPU (Minimax-KI)
+- **Pong** – Paddle-Spiel gegen CPU bis 5 Punkte
 - **Skispringen** – 3D-Timing-Spiel (Anlauf, Absprung, Landung)
 - **Boxen** – Kampf gegen CPU mit Schlag, Block und Ausweichen
 - **Airhockey** – Paddle-Spiel gegen CPU, erstes Tor bis 7
