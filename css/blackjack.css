@@ -1,0 +1,80 @@
+.game-page--blackjack {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.blackjack-table {
+  width: 100%;
+  background: linear-gradient(145deg, #0d5c2e, #1a7a42);
+  border: 3px solid #c9a227;
+  border-radius: var(--radius);
+  padding: 2rem 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.blackjack-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  color: #d4edda;
+}
+
+.blackjack-hand {
+  margin-bottom: 1.5rem;
+}
+
+.blackjack-hand h3 {
+  font-size: 1rem;
+  color: #fff;
+  margin-bottom: 0.75rem;
+}
+
+.blackjack-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 110px;
+}
+
+.playing-card {
+  width: 72px;
+  height: 100px;
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.playing-card--red {
+  color: #c0392b;
+}
+
+.playing-card--black {
+  color: #2c3e50;
+}
+
+.playing-card--hidden {
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  color: transparent;
+}
+
+.playing-card--hidden::after {
+  content: '?';
+  color: #fff;
+  font-size: 1.5rem;
+}
+
+.blackjack-message {
+  text-align: center;
+  color: #d4edda;
+  font-size: 1rem;
+  margin-top: 0.5rem;
+  min-height: 1.5rem;
+}

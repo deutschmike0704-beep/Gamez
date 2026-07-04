@@ -19,6 +19,10 @@ Gamez/
 - **Memory** – Paare finden
 - **Tic-Tac-Toe** – Drei gewinnt
 - **Pong** – Retro-Paddle-Spiel
+- **Skispringen** – 3D-Timing-Spiel (Anlauf, Absprung, Landung)
+- **Boxen** – Kampf gegen CPU mit Schlag, Block und Ausweichen
+- **Airhockey** – Paddle-Spiel gegen CPU, erstes Tor bis 7
+- **Blackjack** – 21 gegen den Dealer (Karte, Halten, Verdoppeln)
 
 ## Lokal starten
 

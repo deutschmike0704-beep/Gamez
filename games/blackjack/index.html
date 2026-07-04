@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blackjack – Gamez</title>
+  <link rel="stylesheet" href="../../css/variables.css">
+  <link rel="stylesheet" href="../../css/main.css">
+  <link rel="stylesheet" href="../../css/blackjack.css">
+</head>
+<body>
+  <div class="game-page game-page--blackjack">
+    <a href="../../index.html" class="game-page__back">← Zurück zur Übersicht</a>
+    <h1 class="game-page__title">Blackjack</h1>
+    <div id="game-container" class="blackjack-table">
+      <div class="blackjack-info">
+        <span id="chips">Chips: 500</span>
+        <span id="bet-display">Einsatz: 50</span>
+      </div>
+      <div class="blackjack-hand" id="dealer-area">
+        <h3>Dealer <span id="dealer-score"></span></h3>
+        <div class="blackjack-cards" id="dealer-cards"></div>
+      </div>
+      <div class="blackjack-hand" id="player-area">
+        <h3>Du <span id="player-score"></span></h3>
+        <div class="blackjack-cards" id="player-cards"></div>
+      </div>
+      <p class="blackjack-message" id="message">Platziere deinen Einsatz und starte!</p>
+    </div>
+    <div class="game-controls">
+      <button class="btn" id="btn-deal">Karten geben</button>
+      <button class="btn" id="btn-hit" disabled>Karte</button>
+      <button class="btn" id="btn-stand" disabled>Halten</button>
+      <button class="btn" id="btn-double" disabled>Verdoppeln</button>
+    </div>
+  </div>
+  <script type="module" src="../../js/games/blackjack.js"></script>
+</body>
+</html>
